@@ -197,9 +197,13 @@ public class NettyRemotingServer extends NettyRemotingAbstract implements Remoti
 
         ServerBootstrap childHandler =
             this.serverBootstrap.group(this.eventLoopGroupBoss, this.eventLoopGroupSelector)
+                 //是否使用 epoll
                 .channel(useEpoll() ? EpollServerSocketChannel.class : NioServerSocketChannel.class)
+                //设置服务端接收连接的队列长度 如果连接已满 将会拒绝新的连接
                 .option(ChannelOption.SO_BACKLOG, 1024)
+                //设置端口复用
                 .option(ChannelOption.SO_REUSEADDR, true)
+                //不启用 TCP会主动探测空闲连接的有效性 的功能
                 .option(ChannelOption.SO_KEEPALIVE, false)
                 .childOption(ChannelOption.TCP_NODELAY, true)
                 .childOption(ChannelOption.SO_SNDBUF, nettyServerConfig.getServerSocketSndBufSize())
