@@ -113,15 +113,21 @@ public class ScheduleMessageService extends ConfigManager {
     public void start() {
         if (started.compareAndSet(false, true)) {
             this.timer = new Timer("ScheduleMessageTimerThread", true);
+            // 遍历所有延迟级别
             for (Map.Entry<Integer, Long> entry : this.delayLevelTable.entrySet()) {
+                // key为延迟级别
                 Integer level = entry.getKey();
+                // value为延迟级别对应的毫秒数
                 Long timeDelay = entry.getValue();
+                // 根据延迟级别获得对应队列的偏移量
                 Long offset = this.offsetTable.get(level);
                 if (null == offset) {
                     offset = 0L;
                 }
-
+                //如果需要延迟
                 if (timeDelay != null) {
+                    // 为每个延迟级别创建定时任务，
+                    // 第一次启动任务延迟为1秒
                     this.timer.schedule(new DeliverDelayedMessageTimerTask(level, offset), FIRST_DELAY_TIME);
                 }
             }
@@ -189,6 +195,10 @@ public class ScheduleMessageService extends ConfigManager {
         return delayOffsetSerializeWrapper.toJson(prettyFormat);
     }
 
+    /**
+     * 解析延迟级别
+     * @return
+     */
     public boolean parseDelayLevel() {
         HashMap<String, Long> timeUnitTable = new HashMap<String, Long>();
         timeUnitTable.put("s", 1000L);
@@ -196,9 +206,11 @@ public class ScheduleMessageService extends ConfigManager {
         timeUnitTable.put("h", 1000L * 60 * 60);
         timeUnitTable.put("d", 1000L * 60 * 60 * 24);
 
+        //获取配置的 延迟级别
         String levelString = this.defaultMessageStore.getMessageStoreConfig().getMessageDelayLevel();
         try {
             String[] levelArray = levelString.split(" ");
+            //遍历并且计算出实际 ms数 并且放入缓存中
             for (int i = 0; i < levelArray.length; i++) {
                 String value = levelArray[i];
                 String ch = value.substring(value.length() - 1);
@@ -260,6 +272,7 @@ public class ScheduleMessageService extends ConfigManager {
         }
 
         public void executeOnTimeup() {
+            //获取 SCHEDULE_TOPIC_XXXX 的队列 队列ID 是根据 延迟等级计算的
             ConsumeQueue cq =
                 ScheduleMessageService.this.defaultMessageStore.findConsumeQueue(TopicValidator.RMQ_SYS_SCHEDULE_TOPIC,
                     delayLevel2QueueId(delayLevel));

@@ -472,18 +472,20 @@ public class MappedFileQueue {
                         this.mappedFileSize,
                         this.mappedFiles.size());
                 } else {
+                    //之前的文件有可能已经被清除了（从this.mappedFiles里也会删掉）。因此不能直接用offset / this.mappedFileSize
+                    //计算offset对应的文件索引
                     int index = (int) ((offset / this.mappedFileSize) - (firstMappedFile.getFileFromOffset() / this.mappedFileSize));
                     MappedFile targetFile = null;
                     try {
                         targetFile = this.mappedFiles.get(index);
                     } catch (Exception ignored) {
                     }
-
+                    //确定 offset 是否正好落在 目标文件中
                     if (targetFile != null && offset >= targetFile.getFileFromOffset()
                         && offset < targetFile.getFileFromOffset() + this.mappedFileSize) {
                         return targetFile;
                     }
-
+                    //查找 offset 应该落的文件
                     for (MappedFile tmpMappedFile : this.mappedFiles) {
                         if (offset >= tmpMappedFile.getFileFromOffset()
                             && offset < tmpMappedFile.getFileFromOffset() + this.mappedFileSize) {
@@ -491,7 +493,7 @@ public class MappedFileQueue {
                         }
                     }
                 }
-
+                //如果没找 返回第一个文件
                 if (returnFirstOnNotFound) {
                     return firstMappedFile;
                 }

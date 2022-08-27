@@ -211,6 +211,12 @@ public class DefaultLitePullConsumer extends ClientConfig implements LitePullCon
         this.defaultLitePullConsumerImpl.shutdown();
     }
 
+    /**
+     * 订阅 Topic
+     * @param topic Topic
+     * @param subExpression 订阅表达式。它只支持或操作如“tag1 || tag2 || tag3” 如果为 null 或 * 表达式，即订阅所有
+     * @throws MQClientException
+     */
     @Override
     public void subscribe(String topic, String subExpression) throws MQClientException {
         this.defaultLitePullConsumerImpl.subscribe(withNamespace(topic), subExpression);

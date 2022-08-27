@@ -89,6 +89,9 @@ public class DefaultLitePullConsumerImpl implements MQConsumerInner {
 
     private OffsetStore offsetStore;
 
+    /**
+     * 负载均衡器
+     */
     private RebalanceImpl rebalanceImpl = new RebalanceLitePullImpl(this);
 
     private enum SubscriptionType {
@@ -428,13 +431,20 @@ public class DefaultLitePullConsumerImpl implements MQConsumerInner {
                 throw new IllegalArgumentException("Topic can not be null or empty.");
             }
             setSubscriptionType(SubscriptionType.SUBSCRIBE);
+            //构建订阅数据
             SubscriptionData subscriptionData = FilterAPI.buildSubscriptionData(defaultLitePullConsumer.getConsumerGroup(),
                 topic, subExpression);
+            //缓存 Topic 和 订阅信息的关联关系
             this.rebalanceImpl.getSubscriptionInner().put(topic, subscriptionData);
+            //设置 消息队列监听
             this.defaultLitePullConsumer.setMessageQueueListener(new MessageQueueListenerImpl());
+            //设置负载均衡
             assignedMessageQueue.setRebalanceImpl(this.rebalanceImpl);
+            //判断服务状态
             if (serviceState == ServiceState.RUNNING) {
+                //发送心跳到所有的 Broker 这个方法是需要获取锁的
                 this.mQClientFactory.sendHeartbeatToAllBrokerWithLock();
+                //订阅变更时 更新主题的订阅信息
                 updateTopicSubscribeInfoWhenSubscriptionChanged();
             }
         } catch (Exception e) {
