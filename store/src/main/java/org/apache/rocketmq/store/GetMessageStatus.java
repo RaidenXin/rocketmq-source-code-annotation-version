@@ -18,21 +18,40 @@ package org.apache.rocketmq.store;
 
 public enum GetMessageStatus {
 
+    /**
+     * 发现
+     */
     FOUND,
-
+    /**
+     * 没有匹配的信息
+     */
     NO_MATCHED_MESSAGE,
-
+    /**
+     * 消息删除
+     */
     MESSAGE_WAS_REMOVING,
-
+    /**
+     * offset 发现为空
+     */
     OFFSET_FOUND_NULL,
-
+    /**
+     * offset 溢出
+     */
     OFFSET_OVERFLOW_BADLY,
-
+    /**
+     *  offset 溢出1
+     */
     OFFSET_OVERFLOW_ONE,
-
+    /**
+     *  offset 太小
+     */
     OFFSET_TOO_SMALL,
-
+    /**
+     * 没有匹配的逻辑队列
+     */
     NO_MATCHED_LOGIC_QUEUE,
-
+    /**
+     * 队列中没有消息
+     */
     NO_MESSAGE_IN_QUEUE,
 }

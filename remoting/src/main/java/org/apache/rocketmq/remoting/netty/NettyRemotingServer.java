@@ -416,11 +416,15 @@ public class NettyRemotingServer extends NettyRemotingAbstract implements Remoti
         }
     }
 
+    /**
+     * Rocket MQ broker 核心入口类 这里和Netty完成对接
+     */
     @ChannelHandler.Sharable
     class NettyServerHandler extends SimpleChannelInboundHandler<RemotingCommand> {
 
         @Override
         protected void channelRead0(ChannelHandlerContext ctx, RemotingCommand msg) throws Exception {
+            //核心处理方法 这里和Netty完成对接
             processMessageReceived(ctx, msg);
         }
     }

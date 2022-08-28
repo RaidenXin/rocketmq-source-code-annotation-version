@@ -415,6 +415,7 @@ public class DefaultMessageStore implements MessageStore {
 
     @Override
     public CompletableFuture<PutMessageResult> asyncPutMessage(MessageExtBrokerInner msg) {
+        //校验
         PutMessageStatus checkStoreStatus = this.checkStoreStatus();
         if (checkStoreStatus != PutMessageStatus.PUT_OK) {
             return CompletableFuture.completedFuture(new PutMessageResult(checkStoreStatus, null));
@@ -424,17 +425,20 @@ public class DefaultMessageStore implements MessageStore {
         if (msgCheckStatus == PutMessageStatus.MESSAGE_ILLEGAL) {
             return CompletableFuture.completedFuture(new PutMessageResult(msgCheckStatus, null));
         }
-
+        //记录开始时间
         long beginTime = this.getSystemClock().now();
+        //异步保存消息 (核心逻辑) 这里就是将消息保存到 CommitLog
         CompletableFuture<PutMessageResult> putResultFuture = this.commitLog.asyncPutMessage(msg);
-
+        //异步保存完毕之后 统计状态 处理耗时 错误次数等信息
         putResultFuture.thenAccept((result) -> {
+            //计算总耗时
             long elapsedTime = this.getSystemClock().now() - beginTime;
             if (elapsedTime > 500) {
                 log.warn("putMessage not in lock elapsed time(ms)={}, bodyLength={}", elapsedTime, msg.getBody().length);
             }
+            //保存最高的耗时 用于统计
             this.storeStatsService.setPutMessageEntireTimeMax(elapsedTime);
-
+            //记录失败次数
             if (null == result || !result.isOk()) {
                 this.storeStatsService.getPutMessageFailedTimes().incrementAndGet();
             }
@@ -444,6 +448,7 @@ public class DefaultMessageStore implements MessageStore {
     }
 
     public CompletableFuture<PutMessageResult> asyncPutMessages(MessageExtBatch messageExtBatch) {
+        //校验
         PutMessageStatus checkStoreStatus = this.checkStoreStatus();
         if (checkStoreStatus != PutMessageStatus.PUT_OK) {
             return CompletableFuture.completedFuture(new PutMessageResult(checkStoreStatus, null));
@@ -453,18 +458,20 @@ public class DefaultMessageStore implements MessageStore {
         if (msgCheckStatus == PutMessageStatus.MESSAGE_ILLEGAL) {
             return CompletableFuture.completedFuture(new PutMessageResult(msgCheckStatus, null));
         }
-
+        //记录开始时间
         long beginTime = this.getSystemClock().now();
+        //异步保存消息 (核心逻辑) 这里就是将消息保存到 CommitLog
         CompletableFuture<PutMessageResult> resultFuture = this.commitLog.asyncPutMessages(messageExtBatch);
-
+        //异步保存完毕之后 统计状态 处理耗时 错误次数等信息
         resultFuture.thenAccept((result) -> {
+            //计算总耗时
             long elapsedTime = this.getSystemClock().now() - beginTime;
             if (elapsedTime > 500) {
                 log.warn("not in lock elapsed time(ms)={}, bodyLength={}", elapsedTime, messageExtBatch.getBody().length);
             }
-
+            //保存最高的耗时 用于统计
             this.storeStatsService.setPutMessageEntireTimeMax(elapsedTime);
-
+            //记录失败次数
             if (null == result || !result.isOk()) {
                 this.storeStatsService.getPutMessageFailedTimes().incrementAndGet();
             }

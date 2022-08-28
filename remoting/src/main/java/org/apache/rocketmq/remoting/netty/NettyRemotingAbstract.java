@@ -136,7 +136,7 @@ public abstract class NettyRemotingAbstract {
 
     /**
      * Entry of incoming command processing.
-     *
+     * 这里处理传入的命令
      * <p>
      * <strong>Note:</strong>
      * The incoming remoting command may be
@@ -154,11 +154,11 @@ public abstract class NettyRemotingAbstract {
         final RemotingCommand cmd = msg;
         if (cmd != null) {
             switch (cmd.getType()) {
-                //如果是请求
+                //如果是请求命令
                 case REQUEST_COMMAND:
                     processRequestCommand(ctx, cmd);
                     break;
-                //如果是返回结果
+                //如果是结果命令
                 case RESPONSE_COMMAND:
                     processResponseCommand(ctx, cmd);
                     break;
@@ -187,25 +187,33 @@ public abstract class NettyRemotingAbstract {
 
     /**
      * Process incoming request command issued by remote peer.
-     *
+     * 处理客户端发出的传入请求命令。
      * @param ctx channel handler context.
      * @param cmd request command.
      */
     public void processRequestCommand(final ChannelHandlerContext ctx, final RemotingCommand cmd) {
+        //这里使用策略模式 用命令的编码 去获取处理器 和 执行线程池
         final Pair<NettyRequestProcessor, ExecutorService> matched = this.processorTable.get(cmd.getCode());
+        //如果没获取到 使用默认的 请求处理器
         final Pair<NettyRequestProcessor, ExecutorService> pair = null == matched ? this.defaultRequestProcessor : matched;
+        //可以认为是请求ID
         final int opaque = cmd.getOpaque();
 
         if (pair != null) {
+            //创建一个任务
             Runnable run = new Runnable() {
                 @Override
                 public void run() {
                     try {
+                        //执行之前 先调用实现了 RPCHook 接口的扩展的钩子函数
                         doBeforeRpcHooks(RemotingHelper.parseChannelRemoteAddr(ctx.channel()), cmd);
+                        //这里是定义 Response 返回之后的处理逻辑
                         final RemotingResponseCallback callback = new RemotingResponseCallback() {
                             @Override
                             public void callback(RemotingCommand response) {
+                                //执行完成之后 在调用 实现了 RPCHook 接口的钩子函数
                                 doAfterRpcHooks(RemotingHelper.parseChannelRemoteAddr(ctx.channel()), cmd, response);
+                                //如果是有返回的调用 需要处理返回结果集
                                 if (!cmd.isOnewayRPC()) {
                                     if (response != null) {
                                         response.setOpaque(opaque);
@@ -222,12 +230,18 @@ public abstract class NettyRemotingAbstract {
                                 }
                             }
                         };
+                        //这里是判断是否是异步 如果是异步 这里使用的是 CompletableFuture 来实现的
                         if (pair.getObject1() instanceof AsyncNettyRequestProcessor) {
+                            //异步没有返回值
                             AsyncNettyRequestProcessor processor = (AsyncNettyRequestProcessor)pair.getObject1();
+                            //处理消息请求的核心方法
                             processor.asyncProcessRequest(ctx, cmd, callback);
                         } else {
+                            //同步处理器
                             NettyRequestProcessor processor = pair.getObject1();
+                            //处理消息请求的核心方法
                             RemotingCommand response = processor.processRequest(ctx, cmd);
+                            //同步处理的返回值 回调
                             callback.callback(response);
                         }
                     } catch (Throwable e) {
@@ -243,7 +257,7 @@ public abstract class NettyRemotingAbstract {
                     }
                 }
             };
-
+            //拒绝请求
             if (pair.getObject1().rejectRequest()) {
                 final RemotingCommand response = RemotingCommand.createResponseCommand(RemotingSysResponseCode.SYSTEM_BUSY,
                     "[REJECTREQUEST]system busy, start flow control for a while");
@@ -253,7 +267,9 @@ public abstract class NettyRemotingAbstract {
             }
 
             try {
+                //封装成任务
                 final RequestTask requestTask = new RequestTask(run, ctx.channel(), cmd);
+                //放入对应的线程池进行处理
                 pair.getObject2().submit(requestTask);
             } catch (RejectedExecutionException e) {
                 if ((System.currentTimeMillis() % 10000) == 0) {
@@ -271,6 +287,7 @@ public abstract class NettyRemotingAbstract {
                 }
             }
         } else {
+            //如果请求的code没有找到对的处理器 返回不支持该请求
             String error = " request type " + cmd.getCode() + " not supported";
             final RemotingCommand response =
                 RemotingCommand.createResponseCommand(RemotingSysResponseCode.REQUEST_CODE_NOT_SUPPORTED, error);

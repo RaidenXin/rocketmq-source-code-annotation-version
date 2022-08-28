@@ -107,6 +107,10 @@ import org.apache.rocketmq.store.dledger.DLedgerCommitLog;
 import org.apache.rocketmq.store.stats.BrokerStats;
 import org.apache.rocketmq.store.stats.BrokerStatsManager;
 
+/**
+ *  Broker 控制器
+ *  Broker 服务的主入口
+ */
 public class BrokerController {
     private static final InternalLogger log = InternalLoggerFactory.getLogger(LoggerName.BROKER_LOGGER_NAME);
     private static final InternalLogger LOG_PROTECTION = InternalLoggerFactory.getLogger(LoggerName.PROTECTION_LOGGER_NAME);
@@ -128,6 +132,9 @@ public class BrokerController {
     private final ConsumerIdsChangeListener consumerIdsChangeListener;
     private final RebalanceLockManager rebalanceLockManager = new RebalanceLockManager();
     private final BrokerOuterAPI brokerOuterAPI;
+    /**
+     * 这里是控制器的调度线程
+     */
     private final ScheduledExecutorService scheduledExecutorService = Executors.newSingleThreadScheduledExecutor(new ThreadFactoryImpl(
         "BrokerControllerScheduledThread"));
     private final SlaveSynchronize slaveSynchronize;
@@ -147,6 +154,9 @@ public class BrokerController {
     private RemotingServer remotingServer;
     private RemotingServer fastRemotingServer;
     private TopicConfigManager topicConfigManager;
+    /**
+     * 下面是各种消息的处理线程
+     */
     private ExecutorService sendMessageExecutor;
     private ExecutorService pullMessageExecutor;
     private ExecutorService replyMessageExecutor;
@@ -231,6 +241,11 @@ public class BrokerController {
         return queryThreadPoolQueue;
     }
 
+    /**
+     * 初始化方法 创建各种处理线程池 和 设置调度方法
+     * @return
+     * @throws CloneNotSupportedException
+     */
     public boolean initialize() throws CloneNotSupportedException {
         boolean result = this.topicConfigManager.load();
 
@@ -543,6 +558,15 @@ public class BrokerController {
         }
     }
 
+    /**
+     *  这里是注册消息处理器 构造处理器策略模式
+     *  Broker 如果向NameServer发送请求的时候,是做为Client的角色 需要处理 结果命令
+     *  如果作为 producer 和 Consumer 之间,是作为 Server 端的角色时,就需要处理来自  producer 和 Consumer 的请求命令。
+     *  对于不同请求 这里会指定对应的请求处理器
+     *  记录一点扩展：
+     *  RocketMQ Broker 中的 请求处的设计思路是 使用的策略模式
+     *  而与之相似的 ZK 的命令处理模式 则使用的是责任链模式
+     */
     public void registerProcessor() {
         /**
          * SendMessageProcessor

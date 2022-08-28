@@ -57,6 +57,10 @@ import org.apache.rocketmq.store.PutMessageResult;
 import org.apache.rocketmq.store.config.StorePathConfigHelper;
 import org.apache.rocketmq.store.stats.BrokerStatsManager;
 
+/**
+ * 发送消息请求处理器
+ * 主要用来处理 Producer 端发送来的消息
+ */
 public class SendMessageProcessor extends AbstractSendMessageProcessor implements NettyRequestProcessor {
 
     private List<ConsumeMessageHook> consumeMessageHookList;
@@ -65,6 +69,13 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
         super(brokerController);
     }
 
+    /**
+     * 同步处理请求消息
+     * @param ctx
+     * @param request
+     * @return
+     * @throws RemotingCommandException
+     */
     @Override
     public RemotingCommand processRequest(ChannelHandlerContext ctx,
                                           RemotingCommand request) throws RemotingCommandException {
@@ -77,6 +88,13 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
         return response;
     }
 
+    /**
+     * 异步处理请求消息
+     * @param ctx
+     * @param request
+     * @param responseCallback
+     * @throws Exception
+     */
     @Override
     public void asyncProcessRequest(ChannelHandlerContext ctx, RemotingCommand request, RemotingResponseCallback responseCallback) throws Exception {
         asyncProcessRequest(ctx, request).thenAcceptAsync(responseCallback::callback, this.brokerController.getSendMessageExecutor());
@@ -89,12 +107,16 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
             case RequestCode.CONSUMER_SEND_MSG_BACK:
                 return this.asyncConsumerSendMsgBack(ctx, request);
             default:
+                //解析出 请求头
                 SendMessageRequestHeader requestHeader = parseRequestHeader(request);
                 if (requestHeader == null) {
                     return CompletableFuture.completedFuture(null);
                 }
+                //构建消息上下文
                 mqtraceContext = buildMsgContext(ctx, requestHeader);
+                //执行 SendMessageHook 钩子函数
                 this.executeSendMessageHookBefore(ctx, request, mqtraceContext);
+                //判断是否是批量
                 if (requestHeader.isBatch()) {
                     return this.asyncSendBatchMessage(ctx, request, mqtraceContext, requestHeader);
                 } else {
@@ -245,23 +267,33 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
         });
     }
 
-
+    /**
+     * 异步发送消息
+     * @param ctx
+     * @param request
+     * @param mqtraceContext
+     * @param requestHeader
+     * @return
+     */
     private CompletableFuture<RemotingCommand> asyncSendMessage(ChannelHandlerContext ctx, RemotingCommand request,
                                                                 SendMessageContext mqtraceContext,
                                                                 SendMessageRequestHeader requestHeader) {
+        //检查消息是否合法
         final RemotingCommand response = preSend(ctx, request, requestHeader);
         final SendMessageResponseHeader responseHeader = (SendMessageResponseHeader)response.readCustomHeader();
 
         if (response.getCode() != -1) {
             return CompletableFuture.completedFuture(response);
         }
-
+        //获取到请求体
         final byte[] body = request.getBody();
-
+        //获取到 队列ID
         int queueIdInt = requestHeader.getQueueId();
+        //根据请求头中的Topic 获取到 Topic相关联的配置
         TopicConfig topicConfig = this.brokerController.getTopicConfigManager().selectTopicConfig(requestHeader.getTopic());
 
         if (queueIdInt < 0) {
+            //如果 获取的队列 ID 小于0;则随机选择一个队列
             queueIdInt = randomQueueId(topicConfig.getWriteQueueNums());
         }
 
@@ -273,6 +305,7 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
             return CompletableFuture.completedFuture(response);
         }
 
+        //将消息转换为内部处理的DTO
         msgInner.setBody(body);
         msgInner.setFlag(requestHeader.getFlag());
         MessageAccessor.setProperties(msgInner, MessageDecoder.string2messageProperties(requestHeader.getProperties()));
@@ -287,8 +320,11 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
 
         CompletableFuture<PutMessageResult> putMessageResult = null;
         Map<String, String> origProps = MessageDecoder.string2messageProperties(requestHeader.getProperties());
+        //获取事物标志
         String transFlag = origProps.get(MessageConst.PROPERTY_TRANSACTION_PREPARED);
+        //判断是不是事务消息
         if (transFlag != null && Boolean.parseBoolean(transFlag)) {
+            //如果是事务消息则去处理事物消息
             if (this.brokerController.getBrokerConfig().isRejectTransactionMessage()) {
                 response.setCode(ResponseCode.NO_PERMISSION);
                 response.setRemark(
@@ -298,8 +334,10 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
             }
             putMessageResult = this.brokerController.getTransactionalMessageService().asyncPrepareMessage(msgInner);
         } else {
+            //普通消息异步处理
             putMessageResult = this.brokerController.getMessageStore().asyncPutMessage(msgInner);
         }
+        //处理返回集
         return handlePutMessageResultFuture(putMessageResult, response, request, msgInner, responseHeader, mqtraceContext, ctx, queueIdInt);
     }
 
@@ -646,10 +684,18 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
         return (this.random.nextInt() % 99999999) % writeQueueNums;
     }
 
+    /**
+     * 检查消息格式 消息是否合法等
+     * @param ctx
+     * @param request
+     * @param requestHeader
+     * @return
+     */
     private RemotingCommand preSend(ChannelHandlerContext ctx, RemotingCommand request,
                                     SendMessageRequestHeader requestHeader) {
+        //构建返回体
         final RemotingCommand response = RemotingCommand.createResponseCommand(SendMessageResponseHeader.class);
-
+        //设置请求ID
         response.setOpaque(request.getOpaque());
 
         response.addExtField(MessageConst.PROPERTY_MSG_REGION, this.brokerController.getBrokerConfig().getRegionId());

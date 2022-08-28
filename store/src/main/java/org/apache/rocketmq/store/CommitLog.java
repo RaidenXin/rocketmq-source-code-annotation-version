@@ -91,7 +91,6 @@ public class CommitLog {
             }
         };
         this.putMessageLock = defaultMessageStore.getMessageStoreConfig().isUseReentrantLockWhenPutMessage() ? new PutMessageReentrantLock() : new PutMessageSpinLock();
-
     }
 
     public boolean load() {
@@ -593,6 +592,7 @@ public class CommitLog {
 
         long elapsedTimeInLock = 0;
         MappedFile unlockMappedFile = null;
+        //获取最后一个映射文件
         MappedFile mappedFile = this.mappedFileQueue.getLastMappedFile();
 
         putMessageLock.lock(); //spin or ReentrantLock ,depending on store config
@@ -603,23 +603,28 @@ public class CommitLog {
             // Here settings are stored timestamp, in order to ensure an orderly
             // global
             msg.setStoreTimestamp(beginLockTimestamp);
-
+            //如果获取到的是空 或者 是已经满了
             if (null == mappedFile || mappedFile.isFull()) {
+                //就在创建一个新的
                 mappedFile = this.mappedFileQueue.getLastMappedFile(0); // Mark: NewFile may be cause noise
             }
+            //如果创建失败就直接返回
             if (null == mappedFile) {
                 log.error("create mapped file1 error, topic: " + msg.getTopic() + " clientAddr: " + msg.getBornHostString());
                 beginTimeInLock = 0;
                 return CompletableFuture.completedFuture(new PutMessageResult(PutMessageStatus.CREATE_MAPEDFILE_FAILED, null));
             }
-
+            //在 commitLog中追加消息
             result = mappedFile.appendMessage(msg, this.appendMessageCallback);
+            //判断返回状态
             switch (result.getStatus()) {
                 case PUT_OK:
                     break;
                 case END_OF_FILE:
+                    //如果文件剩余的长度不够放下一条数据
                     unlockMappedFile = mappedFile;
                     // Create a new file, re-write the message
+                    //重新创建个新的
                     mappedFile = this.mappedFileQueue.getLastMappedFile(0);
                     if (null == mappedFile) {
                         // XXX: warn and notify me
@@ -627,13 +632,16 @@ public class CommitLog {
                         beginTimeInLock = 0;
                         return CompletableFuture.completedFuture(new PutMessageResult(PutMessageStatus.CREATE_MAPEDFILE_FAILED, result));
                     }
+                    //将消息保存到新的文件中
                     result = mappedFile.appendMessage(msg, this.appendMessageCallback);
                     break;
                 case MESSAGE_SIZE_EXCEEDED:
                 case PROPERTIES_SIZE_EXCEEDED:
+                    //这里是处理消息或者属性大小超过限制的
                     beginTimeInLock = 0;
                     return CompletableFuture.completedFuture(new PutMessageResult(PutMessageStatus.MESSAGE_ILLEGAL, result));
                 case UNKNOWN_ERROR:
+                    //处理位置错误
                     beginTimeInLock = 0;
                     return CompletableFuture.completedFuture(new PutMessageResult(PutMessageStatus.UNKNOWN_ERROR, result));
                 default:
@@ -674,6 +682,11 @@ public class CommitLog {
         });
     }
 
+    /**
+     * 异步保存消息
+     * @param messageExtBatch
+     * @return
+     */
     public CompletableFuture<PutMessageResult> asyncPutMessages(final MessageExtBatch messageExtBatch) {
         messageExtBatch.setStoreTimestamp(System.currentTimeMillis());
         AppendMessageResult result;
@@ -1517,6 +1530,14 @@ public class CommitLog {
             return msgStoreItemMemory;
         }
 
+        /**
+         * 在 CommitLog 追加消息的实际执行方法
+         * @param fileFromOffset
+         * @param byteBuffer
+         * @param maxBlank
+         * @param msgInner
+         * @return
+         */
         public AppendMessageResult doAppend(final long fileFromOffset, final ByteBuffer byteBuffer, final int maxBlank,
             final MessageExtBrokerInner msgInner) {
             // STORETIMESTAMP + STOREHOSTADDRESS + OFFSET <br>
@@ -1532,6 +1553,7 @@ public class CommitLog {
             ByteBuffer storeHostHolder = ByteBuffer.allocate(storeHostLength);
 
             this.resetByteBuffer(storeHostHolder, storeHostLength);
+            //生成消息ID
             String msgId;
             if ((sysflag & MessageSysFlag.STOREHOSTADDRESS_V6_FLAG) == 0) {
                 msgId = MessageDecoder.createMessageId(this.msgIdMemory, msgInner.getStoreHostBytes(storeHostHolder), wroteOffset);
@@ -1545,6 +1567,7 @@ public class CommitLog {
             keyBuilder.append('-');
             keyBuilder.append(msgInner.getQueueId());
             String key = keyBuilder.toString();
+            //这里是获取消息在 ConsumerQueue 中的位置
             Long queueOffset = CommitLog.this.topicQueueTable.get(key);
             if (null == queueOffset) {
                 queueOffset = 0L;
