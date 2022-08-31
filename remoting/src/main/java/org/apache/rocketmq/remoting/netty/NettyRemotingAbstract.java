@@ -66,11 +66,13 @@ public abstract class NettyRemotingAbstract {
 
     /**
      * Semaphore to limit maximum number of on-going asynchronous requests, which protects system memory footprint.
+     * 管理异步请求数的信号量
      */
     protected final Semaphore semaphoreAsync;
 
     /**
      * This map caches all on-going requests.
+     * 异步转同步时放置 返回消息的地方
      */
     protected final ConcurrentMap<Integer /* opaque */, ResponseFuture> responseTable =
         new ConcurrentHashMap<Integer, ResponseFuture>(256);

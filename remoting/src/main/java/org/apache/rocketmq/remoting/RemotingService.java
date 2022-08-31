@@ -22,5 +22,9 @@ public interface RemotingService {
 
     void shutdown();
 
+    /**
+     * 这个是注册RPC 处理的勾子函数 可以在Rpc之前或者之后做一些事情
+     * @param rpcHook
+     */
     void registerRPCHook(RPCHook rpcHook);
 }
